@@ -2,6 +2,8 @@ import { PreviewZoom } from './preview-zoom.js'
 import { SINGLE_ITEM } from './constants.js'
 import { inputQuery } from './api.js'
 
+const MAIN_FILE = 'main.typ'
+
 /**
  * Manages preview rendering and zoom controls.
  */
@@ -14,15 +16,19 @@ export class PreviewManager {
     this.app = app
   }
 
-  /** The file the preview renders: the pinned file, else the active file. */
+  /**
+   * The file the preview renders: the pinned file, else `main.typ` when the
+   * bucket has one, else the active file.
+   */
 
   get target() {
-    return this.app.pinnedPreview || this.app.currentFile
+    const hasMain = this.app.fileTree.filePaths.has(MAIN_FILE)
+    return this.app.pinnedPreview || (hasMain ? MAIN_FILE : this.app.currentFile)
   }
 
   /**
-   * Compile the preview target (the pinned file when one is pinned, otherwise
-   * the current file) and render its SVG pages in the preview pane.
+   * Compile the preview target (see `target`) and render its SVG pages in the
+   * preview pane.
    */
 
   async update() {

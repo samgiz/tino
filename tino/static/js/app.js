@@ -190,6 +190,8 @@ class TinoApp {
     await this.fileTree.loadFiles()
     if (restoreTabs)
       await this._restoreBucketTabs()
+    if (!this.currentFile)
+      await this.preview.update()
   }
 
   /** Reopen the tabs saved for the active bucket and show the first one. */

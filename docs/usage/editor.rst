@@ -128,7 +128,8 @@ Unsaved files are marked with a dot on their tab.
 Preview
 ~~~~~~~
 
-The right-hand panel shows an SVG preview of the current ``.typ`` file.
+The right-hand panel shows an SVG preview. It renders ``main.typ`` when the bucket has one, so the preview is there as soon as the bucket opens and stays put while you edit other files; otherwise it renders the current ``.typ`` file.
+Pin the preview to a file with the pin button to render that file instead.
 The preview is re-rendered automatically after each save.
 
 Use the **Zoom in** / **Zoom out** buttons to adjust the preview scale; the content at the centre of the preview stays in place.
