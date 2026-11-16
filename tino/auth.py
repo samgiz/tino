@@ -86,7 +86,10 @@ def get_current_user(request: Request) -> User:
 
 def is_global_admin(user: User) -> bool:
     '''Check if the user belongs to any of the configured admin groups.'''
-    return bool(config.TINO_ADMIN_GROUPS & set(user.groups))
+    if user.api_key_access is not None:
+        return False
+
+    return '*' in config.TINO_ADMIN_GROUPS or bool(config.TINO_ADMIN_GROUPS & set(user.groups))
 
 
 def resolve_role(user: User, access: list[AccessEntry], slug: str | None = None) -> str | None:

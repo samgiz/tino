@@ -136,6 +136,8 @@ TINO_DEFAULT_ROLE = environ.get('TINO_DEFAULT_ROLE', 'none')
 
 _ADMIN_GROUPS_RAW = environ.get('TINO_ADMIN_GROUPS', 'admins')
 #: ⭕ Comma-separated list of OIDC groups whose members are TINO administrators.
+#: ``*`` makes every signed-in user an administrator, for providers that send no groups
+#: (e.g. tsidp); API keys are never administrators.
 TINO_ADMIN_GROUPS: set[str] = {g.strip() for g in _ADMIN_GROUPS_RAW.split(',') if g.strip()}
 
 

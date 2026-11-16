@@ -23,6 +23,17 @@ def test_non_admin_group_is_not_admin():
     assert is_global_admin(_user('employees')) is False
 
 
+def test_wildcard_makes_everyone_admin(monkeypatch):
+    monkeypatch.setattr(config, 'TINO_ADMIN_GROUPS', {'*'})
+    assert is_global_admin(_user()) is True
+    assert resolve_role(_user(), []) == 'committer'
+
+
+def test_wildcard_never_makes_api_keys_admin(monkeypatch):
+    monkeypatch.setattr(config, 'TINO_ADMIN_GROUPS', {'*'})
+    assert is_global_admin(_user(api_key_access={'proj': 'viewer'})) is False
+
+
 # ── resolve_role (OIDC users) ──
 
 def test_admin_resolves_to_committer():
