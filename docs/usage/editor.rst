@@ -136,6 +136,17 @@ Click the displayed percentage to reset the zoom to 100%.
 **Fit to width** zooms the page to fill the preview's width, and keeps it fitted while you resize the panel, until you zoom manually again.
 To zoom around a specific spot, hold :kbd:`Ctrl` (or :kbd:`⌘`) and scroll with the mouse over it, or pinch on a trackpad.
 
+To render variants of one document (e.g. a CV in several languages), declare Typst `inputs <https://typst.app/docs/reference/foundations/sys/#definitions-inputs>`_ in a ``tino.toml`` at the root of the bucket:
+
+.. code-block:: toml
+
+    [inputs]
+    variant = ["full", "short"]
+    lang = ["en", "de", "fr", "lt"]
+
+The preview then shows a dropdown per input; the selection is remembered per bucket in the browser and also applies to the PDF and DOCX downloads.
+Each choice is passed to Typst as ``--input name=value`` and read in the document as ``sys.inputs.at("lang")``.
+
 DOCX export
 ~~~~~~~~~~~
 

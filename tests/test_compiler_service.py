@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 
 from tino.services import compiler as compiler_module
-from tino.services.compiler import CompileError, CompilerService, parse_diagnostics
+from tino.services.compiler import CompileError, CompilerService, InvalidInput, parse_diagnostics
 
 needs_typst = pytest.mark.skipif(shutil.which('typst') is None, reason='typst CLI not installed')
 
@@ -59,6 +59,70 @@ def test_build_cmd_full(tmp_path):
 def test_build_cmd_skips_missing_font_dir(tmp_path):
     svc = CompilerService(tmp_path, font_dir=tmp_path / 'missing')
     assert '--font-path' not in svc._build_cmd('s', 'o', tmp_path)  # pylint: disable=protected-access
+
+
+def test_build_cmd_inputs(compiler, tmp_path):
+    cmd = compiler._build_cmd(  # pylint: disable=protected-access
+        'src.typ', 'out.pdf', tmp_path, inputs={'lang': 'de', 'variant': 'short'})
+    assert cmd == ['typst', 'compile', '--input', 'lang=de', '--input', 'variant=short',
+                   '--root', str(tmp_path), 'src.typ', 'out.pdf']
+
+
+# ── declared inputs ──
+
+INPUTS_TOML = '''\
+[inputs]
+variant = ["full", "short"]
+lang = ["en", "de", "fr", "lt"]
+'''
+
+
+def test_list_inputs_reads_declaration(compiler, files, bucket):
+    files.write(bucket, 'tino.toml', INPUTS_TOML)
+    assert compiler.list_inputs(bucket) == {
+        'variant': ['full', 'short'],
+        'lang': ['en', 'de', 'fr', 'lt'],
+    }
+
+
+def test_list_inputs_without_file(compiler, bucket):
+    assert compiler.list_inputs(bucket) == {}
+
+
+@pytest.mark.parametrize('content', [
+    'not = [valid',
+    'inputs = 3',
+    '[inputs]\nempty = []\nmixed = ["a", 1]\nscalar = "a"\n"a=b" = ["x"]\n',
+])
+def test_list_inputs_ignores_malformed(compiler, files, bucket, content):
+    files.write(bucket, 'tino.toml', content)
+    assert compiler.list_inputs(bucket) == {}
+
+
+def test_compile_passes_declared_inputs(compiler, files, bucket, monkeypatch):
+    files.write(bucket, 'tino.toml', INPUTS_TOML)
+    files.write(bucket, 'a.typ', 'x')
+    fake_run, calls = _fake_run()
+    monkeypatch.setattr(subprocess, 'run', fake_run)
+
+    compiler.compile_svg(bucket, 'a.typ', {'lang': 'lt'})
+    cmd, _kwargs = calls[0]
+    assert cmd[cmd.index('--input') + 1] == 'lang=lt'
+
+
+@pytest.mark.parametrize('inputs', [
+    {'lang': 'es'},
+    {'unknown': 'x'},
+])
+def test_compile_rejects_undeclared_inputs(compiler, files, bucket, monkeypatch, inputs):
+    files.write(bucket, 'tino.toml', INPUTS_TOML)
+    files.write(bucket, 'a.typ', 'x')
+    fake_run, calls = _fake_run()
+    monkeypatch.setattr(subprocess, 'run', fake_run)
+
+    with pytest.raises(InvalidInput):
+        compiler.compile_pdf(bucket, 'a.typ', inputs)
+    assert not calls
 
 
 # ── source resolution ──

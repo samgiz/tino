@@ -164,6 +164,29 @@ def test_compile_svg(login, doc, fake_typst):  # pylint: disable=unused-argument
     }
 
 
+def test_compile_inputs(login, doc, fake_typst):  # pylint: disable=unused-argument
+    client = login(VIEWER)
+    assert client.get('/api/buckets/proj/compile/inputs').json() == {'inputs': {}}
+
+    dependencies.get_file_service().write('proj', 'tino.toml', '[inputs]\nlang = ["en", "de"]\n')
+    assert client.get('/api/buckets/proj/compile/inputs').json() == {
+        'inputs': {'lang': ['en', 'de']},
+    }
+    assert client.get(
+        '/api/buckets/proj/compile/svg/sub/doc.typ', params={'input': 'lang=de'},
+    ).status_code == 200
+
+
+@pytest.mark.parametrize('value', ['lang=es', 'lang', '=de'])
+def test_compile_bad_input_is_422(login, doc, fake_typst, value):  # pylint: disable=unused-argument
+    dependencies.get_file_service().write('proj', 'tino.toml', '[inputs]\nlang = ["en", "de"]\n')
+    client = login(VIEWER)
+
+    for fmt in ('svg', 'pdf'):
+        resp = client.get(f'/api/buckets/proj/compile/{fmt}/sub/doc.typ', params={'input': value})
+        assert resp.status_code == 422
+
+
 def test_compile_pdf(login, doc, fake_typst):  # pylint: disable=unused-argument
     resp = login(VIEWER).get('/api/buckets/proj/compile/pdf/sub/doc.typ')
     assert resp.content == b'%PDF-fake'

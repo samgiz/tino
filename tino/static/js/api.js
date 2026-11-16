@@ -1,6 +1,20 @@
 import { GitAPI, bucketPath } from './git-api.js'
 
 /**
+ * Build the `?input=name=value` query string for Typst inputs.
+ * @param {Object<string, string>} [inputs] - Typst `--input` values by name.
+ * @returns {string} The query string with a leading `?`, or an empty string.
+ */
+
+export function inputQuery(inputs) {
+  const params = new URLSearchParams()
+  Object.entries(inputs || {}).forEach(
+    ([name, value]) => params.append('input', `${name}=${value}`))
+  const query = params.toString()
+  return query ? `?${query}` : ''
+}
+
+/**
  * HTTP client for the TINO REST API.
  * Wraps all backend endpoints (buckets, files, git, compile).
  * Git endpoints live in GitAPI, which this class extends.
@@ -162,8 +176,21 @@ export class TinoAPI extends GitAPI {
 
   // ── Compile ──
 
-  compile(slug, path) {
-    return this._fetch(`${bucketPath(slug)}/compile/svg/${path}`)
+  /**
+   * @param {string} slug - Bucket slug.
+   * @param {string} path - Path of the .typ file.
+   * @param {Object<string, string>} [inputs] - Typst `--input` values by name.
+   */
+
+  compile(slug, path, inputs) {
+    return this._fetch(
+      `${bucketPath(slug)}/compile/svg/${path}${inputQuery(inputs)}`)
+  }
+
+  /** Fetch the inputs a bucket declares in its tino.toml (name to allowed values). */
+
+  compileInputs(slug) {
+    return this._fetch(`${bucketPath(slug)}/compile/inputs`)
   }
 
   // ── Templates ──

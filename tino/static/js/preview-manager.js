@@ -1,5 +1,6 @@
 import { PreviewZoom } from './preview-zoom.js'
 import { SINGLE_ITEM } from './constants.js'
+import { inputQuery } from './api.js'
 
 /**
  * Manages preview rendering and zoom controls.
@@ -31,10 +32,93 @@ export class PreviewManager {
       .classList.toggle('hidden', !isTyp)
     document.getElementById('btn-docx')
       .classList.toggle('hidden', !isTyp || !this.app.config.docxExport)
-    if (isTyp)
+    if (isTyp) {
+      await this._syncInputs()
       await this.compile()
-    else
+    }
+    else {
+      this._renderInputs({})
       this.clear()
+    }
+  }
+
+  /** Reload the bucket's declared inputs and rebuild the dropdowns if they changed. */
+
+  async _syncInputs() {
+    let declared = {}
+    try {
+      declared = (await this.app.api.compileInputs(this.app.bucket)).inputs
+    }
+    catch {
+      // Keep compiling without inputs if the declaration can't be loaded.
+    }
+    const changed = JSON.stringify(declared) !== JSON.stringify(this.declaredInputs)
+    if (changed || this.inputsBucket !== this.app.bucket) {
+      this.inputsBucket = this.app.bucket
+      this._renderInputs(declared)
+    }
+  }
+
+  /** Storage key for the selected inputs of the active bucket. */
+
+  get _inputsKey() {
+    return `tino:inputs:${this.app.bucket}`
+  }
+
+  /** The selected value per declared input; unset or stale ones fall back to the first value. */
+
+  _loadSelection(declared) {
+    let stored = {}
+    try {
+      stored = JSON.parse(localStorage.getItem(this._inputsKey)) || {}
+    }
+    catch {
+      // Unreadable storage means defaults.
+    }
+    return Object.fromEntries(Object.entries(declared).map(
+      ([name, values]) => [name, values.includes(stored[name]) ? stored[name] : values[0]]))
+  }
+
+  /** Build one dropdown per declared input in the preview header. */
+
+  _renderInputs(declared) {
+    this.declaredInputs = declared
+    this.selectedInputs = this._loadSelection(declared)
+    const container = document.getElementById('preview-inputs')
+    container.classList.toggle('hidden', !Object.keys(declared).length)
+    container.replaceChildren(...Object.entries(declared).map(
+      ([name, values]) => this._renderInput(name, values)))
+  }
+
+  /** Build the labelled dropdown for one input. */
+
+  _renderInput(name, values) {
+    const label = document.createElement('label')
+    label.className = 'preview-input'
+    label.append(name)
+    const select = document.createElement('select')
+    select.title = `sys.inputs.${name}`
+    values.forEach(value => {
+      const option = new Option(value, value)
+      option.selected = value === this.selectedInputs[name]
+      select.append(option)
+    })
+    select.addEventListener('change', () => this._selectInput(name, select.value))
+    label.append(select)
+    return label
+  }
+
+  /** Remember the chosen value and re-render the preview with it. */
+
+  _selectInput(name, value) {
+    this.selectedInputs[name] = value
+    try {
+      localStorage.setItem(this._inputsKey, JSON.stringify(this.selectedInputs))
+    }
+    catch {
+      // The choice then only lasts for this page load.
+    }
+    this.compile()
   }
 
   /** Pin the preview to the current .typ file, or unpin if already pinned. */
@@ -92,7 +176,8 @@ export class PreviewManager {
     const gen = this._renderGen
     const preview = this.app.els.previewPage
     try {
-      const result = await this.app.api.compile(this.app.bucket, this.target)
+      const result = await this.app.api.compile(
+        this.app.bucket, this.target, this.selectedInputs)
       if (gen === this._renderGen)
         PreviewManager._renderPages(preview, result.pages)
     }
@@ -191,7 +276,7 @@ export class PreviewManager {
       return
     const slug = encodeURIComponent(this.app.bucket)
     const path = this.target
-    const url = `api/buckets/${slug}/compile/${format}/${path}`
+    const url = `api/buckets/${slug}/compile/${format}/${path}${inputQuery(this.selectedInputs)}`
     const link = document.createElement('a')
     link.href = url
     link.download = ''

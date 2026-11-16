@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import tomllib
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,10 @@ _COMPILE_TIMEOUT = 30
 #: Optional pandoc reference document for DOCX styling (looked up next to the
 #: source file, then at the bucket root).
 REFERENCE_DOCX = 'reference.docx'
+
+#: Optional bucket file declaring the Typst inputs (`--input key=value`) the
+#: preview can switch between, as `[inputs]` lists of allowed values.
+INPUTS_FILE = 'tino.toml'
 
 # Typst error/warning header and its `  ┌─ file:line:col` location line.
 _SEVERITY_RE = re.compile(r'^(error|warning): ?(.*)$')
@@ -68,6 +73,10 @@ class PandocMissing(RuntimeError):
     '''DOCX export was requested, but the pandoc CLI is not installed.'''
 
 
+class InvalidInput(RuntimeError):
+    '''A requested Typst input is not declared in the bucket's :data:`INPUTS_FILE`.'''
+
+
 class CompilerService:
     '''Compiles .typ files to SVG, PDF or DOCX by invoking the Typst (and pandoc) CLI.'''
 
@@ -92,18 +101,38 @@ class CompilerService:
         '''Return whether the pandoc CLI (needed for DOCX export) is installed.'''
         return shutil.which('pandoc') is not None
 
-    def compile_svg(self, slug: str, path: str) -> list[str]:
+    def list_inputs(self, slug: str) -> dict[str, list[str]]:
+        '''Return the inputs declared in the bucket's :data:`INPUTS_FILE`, name to allowed values.
+
+        A missing or malformed file, or a malformed entry, yields no input.
+        '''
+        declared = self._read_inputs(self.data_dir / slug)
+
+        return {
+            name: values for name, values in declared.items()
+            if name and '=' not in name
+            and isinstance(values, list) and values
+            and all(isinstance(value, str) for value in values)
+        }
+
+    def compile_svg(self, slug: str, path: str,
+                    inputs: dict[str, str] | None = None) -> list[str]:
         '''Compile a Typst file and return a list of SVG strings (one per page).
+
+        ``inputs`` are passed to Typst as ``--input`` and must be declared in
+        the bucket's :data:`INPUTS_FILE`, else InvalidInput is raised.
 
         Raises FileNotFoundError if the source file doesn't exist,
         or RuntimeError if compilation fails (with the stderr message).
         '''
         bucket_dir, source = self._resolve_source(slug, path)
+        inputs = self._check_inputs(slug, inputs)
         logger.debug('Compiling SVG for %s/%s', slug, path)
 
-        return self._render_svgs(source, bucket_dir)
+        return self._render_svgs(source, bucket_dir, inputs)
 
-    def compile_pdf(self, slug: str, path: str) -> Path:
+    def compile_pdf(self, slug: str, path: str,
+                    inputs: dict[str, str] | None = None) -> Path:
         '''Compile a Typst file and return the path to the resulting PDF.
 
         Writes to a temporary file; the caller is responsible for deleting it
@@ -112,20 +141,22 @@ class CompilerService:
         or RuntimeError if compilation fails (with the stderr message).
         '''
         bucket_dir, source = self._resolve_source(slug, path)
+        inputs = self._check_inputs(slug, inputs)
         logger.info('Compiling PDF for %s/%s', slug, path)
 
         with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as tmp:
             output = Path(tmp.name)
 
         try:
-            self._run(source, output, bucket_dir)
+            self._run(source, output, bucket_dir, inputs=inputs)
         except Exception:
             output.unlink(missing_ok=True)
             raise
 
         return output
 
-    def compile_docx(self, slug: str, path: str) -> Path:
+    def compile_docx(self, slug: str, path: str,
+                     inputs: dict[str, str] | None = None) -> Path:
         '''Compile a Typst file to DOCX and return the path to the resulting file.
 
         Typst exports HTML (an experimental Typst feature), which pandoc then
@@ -140,6 +171,7 @@ class CompilerService:
         or RuntimeError if pandoc fails.
         '''
         bucket_dir, source = self._resolve_source(slug, path)
+        inputs = self._check_inputs(slug, inputs)
 
         if not self.pandoc_available():
             raise PandocMissing('DOCX export requires pandoc, which is not installed')
@@ -148,7 +180,7 @@ class CompilerService:
 
         with tempfile.TemporaryDirectory() as tmp:
             html = Path(tmp) / 'document.html'
-            self._run(source, html, bucket_dir, fmt='html')
+            self._run(source, html, bucket_dir, fmt='html', inputs=inputs)
 
             with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as out:
                 output = Path(out.name)
@@ -163,11 +195,40 @@ class CompilerService:
 
     # ── Internal ──
 
-    def _render_svgs(self, source, bucket_dir):
+    @staticmethod
+    def _read_inputs(bucket_dir):
+        '''Return the raw ``[inputs]`` table of the bucket's :data:`INPUTS_FILE`, or ``{}``.'''
+        path = bucket_dir / INPUTS_FILE
+
+        if not path.is_file():
+            return {}
+
+        try:
+            table = tomllib.loads(path.read_text(encoding='utf-8')).get('inputs', {})
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+            logger.warning('Ignoring invalid %s', path)
+            return {}
+
+        return table if isinstance(table, dict) else {}
+
+    def _check_inputs(self, slug, inputs):
+        '''Return ``inputs`` once every name and value is declared in the bucket, else raise.'''
+        if not inputs:
+            return {}
+
+        declared = self.list_inputs(slug)
+
+        for name, value in inputs.items():
+            if value not in declared.get(name, ()):
+                raise InvalidInput(f'Input {name}={value} is not declared in {INPUTS_FILE}')
+
+        return inputs
+
+    def _render_svgs(self, source, bucket_dir, inputs=None):
         '''Compile a source file to SVG and return one string per page.'''
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / 'page-{n}.svg'
-            self._run(source, output, bucket_dir, fmt='svg')
+            self._run(source, output, bucket_dir, fmt='svg', inputs=inputs)
 
             return [
                 svg_file.read_text(encoding='utf-8')
@@ -187,10 +248,10 @@ class CompilerService:
 
         return bucket_dir, source
 
-    def _run(self, source, output, root, fmt=None):
+    def _run(self, source, output, root, fmt=None, inputs=None):
         '''Build the typst compile command, run it, and raise on failure.'''
         result = subprocess.run(
-            self._build_cmd(source, output, root, fmt),
+            self._build_cmd(source, output, root, fmt, inputs),
             cwd=str(root),
             capture_output=True, text=True,
             timeout=_COMPILE_TIMEOUT, check=False,
@@ -250,7 +311,7 @@ class CompilerService:
 
         return text
 
-    def _build_cmd(self, source, output, root, fmt=None):
+    def _build_cmd(self, source, output, root, fmt=None, inputs=None):
         '''Assemble the typst compile argument list.'''
         cmd = ['typst', 'compile']
 
@@ -265,6 +326,9 @@ class CompilerService:
 
         if self.font_dir and self.font_dir.is_dir():
             cmd.extend(['--font-path', str(self.font_dir)])
+
+        for name, value in (inputs or {}).items():
+            cmd.extend(['--input', f'{name}={value}'])
 
         cmd.extend(['--root', str(root), str(source), str(output)])
 
