@@ -26,6 +26,7 @@ __all__ = (
     'TINO_OIDC_DISCOVERY_URL',
     'TINO_OIDC_GROUPS_CLAIM',
     'TINO_OIDC_ISSUER_URL',
+    'TINO_OIDC_SCOPES',
     'TINO_PACKAGE_DIR',
     'TINO_ROOM_TTL',
     'TINO_ROOT_PATH',
@@ -171,6 +172,11 @@ TINO_OIDC_CLIENT_SECRET = environ.get('TINO_OIDC_CLIENT_SECRET')
 
 #: ⭕ The OIDC token claim that contains the user's group memberships.
 TINO_OIDC_GROUPS_CLAIM = environ.get('TINO_OIDC_GROUPS_CLAIM', 'groups')
+
+#: ⭕ The space-separated OIDC scopes to request.
+#: Drop groups for providers that reject it as an unsupported scope
+#: (e.g. tsidp); the group claim can still come from the ID token.
+TINO_OIDC_SCOPES = environ.get('TINO_OIDC_SCOPES', 'openid email profile groups')
 
 
 # ----- 🤖 MCP -----

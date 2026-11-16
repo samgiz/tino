@@ -198,3 +198,23 @@ def test_large_responses_are_gzipped(admin_client, app_buckets):
     app_buckets.create('big', description='x' * 5000)
     resp = admin_client.get('/api/buckets', headers={'Accept-Encoding': 'gzip'})
     assert resp.headers.get('content-encoding') == 'gzip'
+
+
+@pytest.mark.anyio
+async def test_setup_oauth_requests_configured_scopes(monkeypatch):
+    registered = {}
+
+    async def load_server_metadata():
+        return {}
+
+    class FakeOAuth:
+        oidc = type('Client', (), {'load_server_metadata': staticmethod(load_server_metadata)})
+
+        @staticmethod
+        def register(**kwargs):
+            registered.update(kwargs)
+
+    monkeypatch.setattr(auth, 'oauth', FakeOAuth)
+    monkeypatch.setattr(config, 'TINO_OIDC_SCOPES', 'openid email profile')
+    await auth.setup_oauth()
+    assert registered['client_kwargs'] == {'scope': 'openid email profile'}
