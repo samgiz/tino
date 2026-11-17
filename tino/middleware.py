@@ -11,6 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from . import config
 from .auth import get_api_key_service
+from .slowlog import SlowRequestMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -170,3 +171,4 @@ def register_middleware(app: FastAPI) -> None:
     app.add_middleware(GZipMiddleware, minimum_size=1024)
     # Outermost, so every other middleware already sees the sub-path root_path.
     app.add_middleware(_RootPathMiddleware)
+    app.add_middleware(SlowRequestMiddleware)

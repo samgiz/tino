@@ -1,5 +1,6 @@
 '''FastAPI application factory. Mounts routers, WebSocket collab, and static frontend.'''
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -18,6 +19,7 @@ from .middleware import register_middleware
 from .routers import api_keys, buckets, collab
 from .routers import compile as compile_router
 from .routers import events, files, fonts, git, misc, search, templates
+from .slowlog import watch_event_loop
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,7 @@ async def lifespan(_app: FastAPI):
 
     collab_mgr = get_collab_manager()
     collab_mgr.start()
+    lag_watcher = asyncio.create_task(watch_event_loop())
 
     # One shared HTTP client for TINO's outbound calls (the MCP discovery proxy),
     # reused across requests instead of constructed per call.
@@ -62,6 +65,7 @@ async def lifespan(_app: FastAPI):
         logger.debug('MCP server disabled')
         yield
 
+    lag_watcher.cancel()
     await _app.state.http_client.aclose()
     await collab_mgr.shutdown()
 
