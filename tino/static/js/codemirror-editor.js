@@ -23,6 +23,7 @@ import {
 } from './vendor/codemirror.js'
 import { dispatchWithFreshHistory, undoHistory } from './codemirror-history.js'
 import { typst, typstKeymap } from './codemirror-typst.js'
+import { yamlSupport } from './codemirror-yaml.js'
 import { SINGLE_ITEM } from './constants.js'
 
 /**
@@ -38,6 +39,16 @@ import { SINGLE_ITEM } from './constants.js'
 const _programmatic = Annotation.define()
 
 const _noop = () => null
+
+/** Language extensions for a file: Typst and YAML get their own, anything else is plain text. */
+
+const _languageFor = path => {
+  if (path.endsWith('.typ'))
+    return [typst(), keymap.of(typstKeymap)]
+  if (/\.ya?ml$/u.test(path))
+    return yamlSupport()
+  return []
+}
 
 export class CodeMirrorEditor {
 
@@ -59,6 +70,7 @@ export class CodeMirrorEditor {
     this._collab = new Compartment()
     this._vim = new Compartment()
     this._wrap = new Compartment()
+    this._language = new Compartment()
     this._view = new EditorView({
       parent,
       state: this._buildState(''),
@@ -98,6 +110,15 @@ export class CodeMirrorEditor {
     return this._wrapOn
   }
 
+  /**
+   * Pick syntax highlighting, indentation and Typst shortcuts from the file extension.
+   * @param {string} path - Path of the file being shown.
+   */
+
+  setLanguage(path) {
+    this._view.dispatch({ effects: this._language.reconfigure(_languageFor(path)) })
+  }
+
   /** @returns {EditorView} The underlying CodeMirror view. */
 
   get view() {
@@ -121,12 +142,11 @@ export class CodeMirrorEditor {
         indentOnInput(),
         undoHistory(),
         this._collab.of([]),
-        typst(),
+        this._language.of(_languageFor('')),
         keymap.of([
           this._saveBinding(),
           CodeMirrorEditor._gotoLineBinding(),
           CodeMirrorEditor._selectNextBinding(),
-          ...typstKeymap,
           indentWithTab,
           ...searchKeymap,
           ...foldKeymap,

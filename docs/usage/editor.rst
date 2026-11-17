@@ -19,6 +19,9 @@ Syntax highlighting
 ``.typ`` files are highlighted with a Typst-aware grammar: comments, strings, keywords (``#let``, ``#show``, ``#import``, …), function calls, headings, strong and emphasis, math, labels and references, numbers, and punctuation each get their own colour.
 The palette is drawn from the corporate-design colours and adapts to the active :ref:`theme <Theming>` (dark and light).
 
+``.yaml`` and ``.yml`` files get YAML highlighting in the same palette.
+Other files are plain text, and the Typst formatting toolbar and list shortcuts only apply to ``.typ`` files.
+
 Formatting toolbar
 ~~~~~~~~~~~~~~~~~~~~
 

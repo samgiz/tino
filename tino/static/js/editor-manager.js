@@ -104,13 +104,15 @@ export class EditorManager {
       this.app.fileBuffers[path] = loaded.content
       this.app.fileMtimes[path] = loaded.modified
     }
-    this._showTextEditor(loaded.content)
+    this._showTextEditor(loaded.content, path)
   }
 
-  _showTextEditor(content) {
+  _showTextEditor(content, path = '') {
     this.app.els.binaryPreview.classList.add('hidden')
     this.app.els.binaryPreview.innerHTML = ''
     const canEdit = ['editor', 'committer'].includes(this.app.bucketRole)
+    this.app.els.editor.setLanguage(path)
+    this.toolbar.setMarkup(path.endsWith('.typ'))
     this.app.els.editor.setContent(content)
     this.app.els.editor.setEditable(canEdit)
     this.app.els.editor.setHidden(false)

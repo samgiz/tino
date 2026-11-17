@@ -38,6 +38,12 @@ export class EditorToolbar {
     this._bar.classList.remove('hidden')
   }
 
+  /** Show the Typst formatting buttons only for Typst files; word wrap stays. */
+
+  setMarkup(on) {
+    this._bar.classList.toggle('plain', !on)
+  }
+
   /** Hide the toolbar. */
 
   hide() {

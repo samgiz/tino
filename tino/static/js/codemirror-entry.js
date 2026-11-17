@@ -52,5 +52,6 @@ export {
   searchKeymap,
   selectNextOccurrence,
 } from '@codemirror/search'
+export { yaml } from '@codemirror/lang-yaml'
 export { tags } from '@lezer/highlight'
 export { vim } from '@replit/codemirror-vim'
